@@ -41,12 +41,13 @@ func run(r io.Reader) error {
 	table.SetHeader([]string{"API Version", "Kind", "Name"})
 
 	for _, object := range objects {
-		s, err := summarize(object)
+		ss, err := summarize(object)
 		if err != nil {
 			return errors.Wrap(err, "creating summary for object")
 		}
-
-		table.Append(s.row())
+		for _, s := range ss {
+			table.Append(s.row())
+		}
 	}
 
 	table.Render()
@@ -86,15 +87,16 @@ func (s *summary) row() []string {
 	return []string{s.APIVersion, s.Kind, s.Name}
 }
 
-func summarize(m map[string]interface{}) (*summary, error) {
-	apiVersion, ok := m["apiVersion"].(string)
-	if !ok {
-		return nil, errors.New("finding apiVersion")
-	}
+func summarizeItem(m map[interface{}]interface{}) (*summary, error) {
 
 	kind, ok := m["kind"].(string)
 	if !ok {
 		return nil, errors.New("finding kind")
+	}
+
+	apiVersion, ok := m["apiVersion"].(string)
+	if !ok {
+		return nil, errors.New("finding apiVersion")
 	}
 
 	metadata, ok := m["metadata"].(map[interface{}]interface{})
@@ -128,4 +130,70 @@ func summarize(m map[string]interface{}) (*summary, error) {
 	}
 
 	return nil, errors.New("unable to find object name")
+}
+
+func summarize(m map[string]interface{}) (summaries []*summary, err error) {
+
+	kind, ok := m["kind"].(string)
+	if !ok {
+		return nil, errors.New("finding kind")
+	}
+
+	if kind == "List" {
+		items, ok := m["items"].([]interface{})
+		if !ok {
+			return nil, errors.New("finding items")
+		}
+		for _, item := range items {
+			i, ok := item.(map[interface{}]interface{})
+			if !ok {
+				println(i)
+				return nil, errors.New("finding item")
+			}
+			item, err := summarizeItem(i)
+			if err != nil {
+				return nil, err
+			}
+			summaries = append(summaries, item)
+		}
+	} else {
+
+		apiVersion, ok := m["apiVersion"].(string)
+		if !ok {
+			return nil, errors.New("finding apiVersion")
+		}
+
+		metadata, ok := m["metadata"].(map[interface{}]interface{})
+		if !ok {
+			return nil, errors.Errorf("finding metadata")
+		}
+
+		s := &summary{
+			APIVersion: apiVersion,
+			Kind:       kind,
+		}
+
+		nameRaw := metadata["name"]
+		if nameRaw != nil {
+			s.Name, ok = nameRaw.(string)
+			if !ok {
+				return nil, errors.New("finding name")
+			}
+			summaries = append(summaries, s)
+			return summaries, nil
+		}
+
+		generateNameRaw := metadata["generateName"]
+		if generateNameRaw != nil {
+			s.Name, ok = generateNameRaw.(string)
+			if !ok {
+				return nil, errors.New("finding generateName")
+			}
+			summaries = append(summaries, s)
+			return summaries, nil
+		}
+
+	}
+	return summaries, nil
+
 }
