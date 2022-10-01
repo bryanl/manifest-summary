@@ -86,15 +86,16 @@ func (s *summary) row() []string {
 	return []string{s.APIVersion, s.Kind, s.Name}
 }
 
-func summarize(m map[string]interface{}) (*summary, error) {
-	apiVersion, ok := m["apiVersion"].(string)
-	if !ok {
-		return nil, errors.New("finding apiVersion")
-	}
+func summarizeItem(m map[string]interface{}) (*summary, error) {
 
 	kind, ok := m["kind"].(string)
 	if !ok {
 		return nil, errors.New("finding kind")
+	}
+
+	apiVersion, ok := m["apiVersion"].(string)
+	if !ok {
+		return nil, errors.New("finding apiVersion")
 	}
 
 	metadata, ok := m["metadata"].(map[interface{}]interface{})
@@ -128,4 +129,25 @@ func summarize(m map[string]interface{}) (*summary, error) {
 	}
 
 	return nil, errors.New("unable to find object name")
+}
+
+func summarize(m map[string]interface{}) (*summary, error) {
+
+	kind, ok := m["kind"].(string)
+	if !ok {
+		return nil, errors.New("finding kind")
+	}
+
+	if kind == "List" {
+		items, ok := m["items"].([]interface{})
+		if !ok {
+			return nil, errors.New("finding items")
+		}
+		for _, item := range items {
+			summarizeItem(item.(map[string]interface{}))
+		}
+	} else {
+		summarizeItem(m)
+	}
+
 }
